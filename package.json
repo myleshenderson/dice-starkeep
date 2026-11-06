@@ -1,0 +1,23 @@
+{
+  "name": "dice-starkeep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dice, the backend-less Flutter web build of dice-engine, packaged as a Starkeep app.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/serve.mjs",
+    "check": "node scripts/check-manifest.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.17",
+    "@starkeep/app-client": "0.10.0",
+    "hono": "^4.12.30"
+  },
+  "devDependencies": {
+    "@starkeep/admin-manifest": "^0.8.0"
+  }
+}

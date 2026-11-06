@@ -1,0 +1,96 @@
+# Dice for Starkeep
+
+Dice is a scorecard dice game, and this repository packages its web build as a
+[Starkeep](https://github.com/starkeep-org/starkeep-core) app. It is the
+backend-less Flutter web build of Dice (from Myles Henderson's private
+`dice-engine` repository), with a small server that satisfies Starkeep's app
+contract.
+
+## What you get
+
+Solo play in the browser:
+
+- **Dice Poker**, **Fifteen High**, **Fifteen Low** and **Bum Me Out**
+- **Beat the Bot** and the **Optimi Gauntlet** (play against a solver; the
+  solved expected-value table ships in the bundle)
+
+The game rules run in the browser as WebAssembly (the same Rust engine the phone
+apps use). Nothing is stored in Starkeep: Dice asks for no file types, declares
+no tables, and never calls the data server. Game history lives in the browser's
+local storage.
+
+## What it lacks
+
+- No groups, daily puzzles, leaderboards or sign-in. Those need the hosted Dice
+  backend, which this build does not contain.
+- No sync between devices or browsers.
+- Local install only (`targets: ["local"]`). There is no cloud bundle.
+- No maintenance promise. This is a one-off gift build; it may not be updated
+  when Starkeep or Dice change.
+
+## Install on a local Starkeep
+
+You need a local Starkeep running from `starkeep-core` (see its README, "Part
+A"), Node 22 or later and pnpm.
+
+1. Clone this repository into a folder that will hold your third-party apps,
+   for example `~/starkeep-third-party/dice-starkeep`. Starkeep's app discovery
+   scans the **folders inside** a registered folder, so register the parent
+   (`~/starkeep-third-party`), not `dice-starkeep` itself.
+2. Install the server's dependencies. Starkeep runs apps from their folder and
+   does not install dependencies for you:
+
+   ```sh
+   cd ~/starkeep-third-party/dice-starkeep
+   pnpm install
+   ```
+
+3. In Starkeep Admin (`http://localhost:3000`), start the Data Server, click
+   **Discover apps**, add the parent folder from step 1 and close the dialog.
+   A **Dice** card appears under Local.
+4. Click **Install Dice**, then **Approve & Install** (Dice requests no file
+   access), then **Start Dice**, then **Open Dice ↗**.
+
+`pnpm check` validates `starkeep.manifest.json` with the published
+`@starkeep/admin-manifest`.
+
+## How it is put together
+
+| Path | What it is |
+| --- | --- |
+| `starkeep.manifest.json` | App identity, `tier: community`, no grants, `localRun` starting `node server/serve.mjs --port <n>`. |
+| `server/app.mjs` | The Hono app: `/starkeep-runtime-config` (runtime-config route), `/api/local-data/*` (signing proxy, `sessionAuth()`), and a file server for `web/`. `index.html` gets its `<base href>` from `appBasePath()`. |
+| `server/serve.mjs` | The local surface: `@hono/node-server` on 127.0.0.1, refusing non-loopback `Host` headers. |
+| `web/` | The pre-built Flutter web bundle (static files, not rebuilt here). |
+
+The bundle is not built with Vite. Starkeep's docs name Vite as the default for
+the browser half, but the local surface only needs files on disk, so the Flutter
+output is served as is.
+
+## Where the bundle came from
+
+Built from `dice-engine` commit `844d398b1d1e6808d6622c4ca34e67919d7278b0`
+(Flutter 3.47.2) with:
+
+```sh
+scripts/gen-ev-table.sh
+(cd apps/mobile && tool/build_web.sh --release)
+(cd apps/mobile && flutter build web --release --pwa-strategy=none \
+   --no-web-resources-cdn --base-href /)
+```
+
+`--no-web-resources-cdn` makes the page load CanvasKit from this app instead of
+from Google's CDN, so Dice works without internet access. The CanvasKit
+variants the dart2js/CanvasKit build never fetches were then deleted
+(`skwasm*`, `wimp*`, `webparagraph/`, every `*.js.symbols`), as were the
+hosted site's `privacy.html` and `terms.html`, which describe a service this
+build does not use. What remains is about 21 MB on disk: CanvasKit for
+Chromium browsers (`canvaskit/chromium/`) and for everything else
+(`canvaskit/canvaskit.wasm`), `main.dart.js`, the Rust engine
+(`pkg/`), and the solver table.
+
+See [NOTES.md](NOTES.md) for the rough edges found while packaging it.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

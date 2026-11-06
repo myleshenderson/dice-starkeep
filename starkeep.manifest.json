@@ -1,0 +1,17 @@
+{
+  "id": "dice",
+  "name": "Dice",
+  "version": "0.1.0",
+  "description": "Solo dice games: Dice Poker, Fifteen High, Fifteen Low, Bum Me Out and the Optimi Gauntlet. Plays entirely in the browser and stores nothing in Starkeep.",
+  "tier": "community",
+  "targets": ["local"],
+  "localRun": {
+    "command": "node",
+    "args": ["server/serve.mjs"],
+    "portFlag": "--port"
+  },
+  "infraRequirements": {},
+  "homepage": "https://github.com/myleshenderson/dice-starkeep",
+  "author": "Myles Henderson",
+  "license": "MIT"
+}

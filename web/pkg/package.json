@@ -1,0 +1,9 @@
+{
+  "name": "rust_lib_mobile",
+  "version": "0.1.0",
+  "files": [
+    "rust_lib_mobile_bg.wasm",
+    "rust_lib_mobile.js"
+  ],
+  "browser": "rust_lib_mobile.js"
+}
