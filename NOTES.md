@@ -75,3 +75,15 @@ rolled. Everything below is friction, not a blocker.
    text lists only the `{ auth: "session", verifySession }` form. "Installing
    it" says admin "reads and validates the manifest"; admin-web forwards the
    raw manifest to local-data-server and does no validation itself.
+
+10. **admin-web hands its own environment to the cloud installer, `AWS_PROFILE`
+    included.** `routes/cloud-data-server-install.ts` (and the app and Drive
+    install routes) spawn the installer with `{ ...process.env, AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN }`. When the shell that started
+    admin-web had `AWS_PROFILE` set, the AWS SDK's default chain prefers the
+    profile over the static pair the wizard just minted from Cognito, and the
+    deploy dies on that profile's state ("Token is expired. To refresh this SSO
+    session run 'aws sso login'") before touching the deployment. Deleting
+    `AWS_PROFILE` and `AWS_DEFAULT_PROFILE` from the spawn env would make the
+    wizard's credentials the only ones in play, which is what the wizard says
+    it does.

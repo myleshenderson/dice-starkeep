@@ -8,11 +8,11 @@ contract.
 
 ## What you get
 
-Solo play in the browser:
-
-- **Dice Poker**, **Fifteen High**, **Fifteen Low** and **Bum Me Out**
-- **Beat the Bot** and the **Optimi Gauntlet** (play against a solver; the
-  solved expected-value table ships in the bundle)
+Solo play in the browser: **Beat the Bot**, a game of Dice Poker against the
+expected-value solver (its solved table ships in the bundle). The home screen
+offers that one game and nothing else. Dice's other built-ins, puzzles and
+custom games stay in the engine but are reached through group shelves, which
+need the hosted backend this build does not contain.
 
 The game rules run in the browser as WebAssembly (the same Rust engine the phone
 apps use). Nothing is stored in Starkeep: Dice asks for no file types, declares
@@ -23,8 +23,8 @@ local storage.
 
 - No groups, daily puzzles, leaderboards or sign-in. Those need the hosted Dice
   backend, which this build does not contain.
-- No sync between devices or browsers.
-- Local install only (`targets: ["local"]`). There is no cloud bundle.
+- No sync between devices or browsers. In the cloud, game history lives in
+  the browser that played the games.
 - No maintenance promise. This is a one-off gift build; it may not be updated
   when Starkeep or Dice change.
 
@@ -52,15 +52,32 @@ A"), Node 22 or later and pnpm.
    access), then **Start Dice**, then **Open Dice ↗**.
 
 `pnpm check` validates `starkeep.manifest.json` with the published
-`@starkeep/admin-manifest`.
+`@starkeep/admin-manifest`. `pnpm test` exercises the server half.
+
+## Install in your Starkeep cloud
+
+Once Starkeep Cloud is deployed from the same computer (starkeep-core's
+README, "Part B"), a **Dice** card appears under **Cloud** in Starkeep Admin.
+Click **Install Dice in cloud**. The install runs `pnpm bundle` here, uploads
+the zip and creates Dice's Lambda and routes; **Open Dice ↗** then opens
+`/apps/dice` on your deployment, which shows a sign-in page until you sign in
+with your Starkeep account.
+
+Dice holds no data in Starkeep, so the cloud install creates nothing but the
+compute to serve the game. A person without a session gets the sign-in page
+and nothing else: every other path is gated by the platform's session
+authorizer, and the server half refuses them too.
 
 ## How it is put together
 
 | Path | What it is |
 | --- | --- |
-| `starkeep.manifest.json` | App identity, `tier: community`, no grants, `localRun` starting `node server/serve.mjs --port <n>`. |
-| `server/app.mjs` | The Hono app: `/starkeep-runtime-config` (runtime-config route), `/api/local-data/*` (signing proxy, `sessionAuth()`), and a file server for `web/`. `index.html` gets its `<base href>` from `appBasePath()`. |
+| `starkeep.manifest.json` | App identity, `tier: community`, no grants, `localRun` starting `node server/serve.mjs --port <n>`, and one session-gated `static` compute handler for the cloud with `/`, `/sign-in`, the runtime config and the session routes public. |
+| `server/app.mjs` | The Hono app: `/starkeep-runtime-config` (runtime-config route), `/api/session/*` (the platform's session routes), `/api/local-data/*` (signing proxy, `sessionAuth()`), the root and `/sign-in` (the game, or the sign-in page for a cloud visitor without a session), and a file server for `web/`. `index.html` gets its `<base href>` from `appBasePath()`. |
+| `server/sign-in.mjs` | The one-button sign-in page, linking to the platform's `/auth/start`. |
 | `server/serve.mjs` | The local surface: `@hono/node-server` on 127.0.0.1, refusing non-loopback `Host` headers. |
+| `server/lambda.mjs` | The cloud surface: the platform's web adapter in front of the same Hono app. |
+| `scripts/bundle.mjs` | `pnpm bundle`: stages `web/`, gzips the large binaries (a Lambda answer is capped at 6 MB and CanvasKit is bigger), bundles the Lambda entry with esbuild and zips. |
 | `web/` | The pre-built Flutter web bundle (static files, not rebuilt here). |
 
 The bundle is not built with Vite. Starkeep's docs name Vite as the default for

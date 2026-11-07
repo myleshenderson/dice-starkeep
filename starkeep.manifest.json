@@ -1,16 +1,39 @@
 {
   "id": "dice",
   "name": "Dice",
-  "version": "0.1.0",
-  "description": "Solo dice games: Dice Poker, Fifteen High, Fifteen Low, Bum Me Out and the Optimi Gauntlet. Plays entirely in the browser and stores nothing in Starkeep.",
+  "version": "0.2.0",
+  "description": "Beat the Bot: Dice Poker against an expected-value solver. Plays entirely in the browser and stores nothing in Starkeep.",
   "tier": "community",
-  "targets": ["local"],
+  "targets": ["local", "cloud"],
   "localRun": {
     "command": "node",
     "args": ["server/serve.mjs"],
     "portFlag": "--port"
   },
-  "infraRequirements": {},
+  "infraRequirements": {
+    "compute": {
+      "enabled": true,
+      "handlers": [
+        {
+          "name": "static",
+          "handler": "index.handler",
+          "memoryMb": 256,
+          "timeoutSeconds": 10,
+          "routes": ["GET /", "ANY /{proxy+}"],
+          "auth": "session",
+          "publicPaths": ["/", "/sign-in", "/starkeep-runtime-config", "/api/session/*"],
+          "staticAssetPaths": [],
+          "env": {
+            "STARKEEP_API_GATEWAY_URL": "",
+            "STARKEEP_USER_POOL_ID": "",
+            "STARKEEP_USER_POOL_CLIENT_ID": "",
+            "STARKEEP_IDENTITY_POOL_ID": "",
+            "STARKEEP_LAMBDA_CONCURRENCY": ""
+          }
+        }
+      ]
+    }
+  },
   "homepage": "https://github.com/myleshenderson/dice-starkeep",
   "author": "Myles Henderson",
   "license": "MIT"
