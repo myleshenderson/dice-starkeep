@@ -2,9 +2,14 @@
  * Dice's server half, as a Hono app.
  *
  * Dice is a static Flutter web build that plays entirely in the browser: it
- * reads and writes nothing in Starkeep. The server half is therefore the
- * routes every Starkeep app must carry, a sign-in page for the cloud surface,
- * and a file server for the bundle in `web/`.
+ * reads and writes nothing in Starkeep. The server half is therefore the shell,
+ * the platform's session routes and a sign-in page for the cloud surface, and
+ * the platform's static responder for the build's files in `web/`.
+ *
+ * The build lives under `web/_static/`, except `index.html` (the shell, at the
+ * root) and `web/pkg/` (the Rust engine, whose path `main.dart.js` fixes at
+ * `pkg/`). In the cloud, CloudFront serves `/_static/*` from S3, so those
+ * requests never reach this app; locally, `serveStatic` answers them.
  *
  * Routes are app-relative, as `docs/authoring-an-app.md` asks. The one place
  * that needs the mount prefix is the bundle's `<base href>`, which a browser
@@ -17,13 +22,12 @@
  * root answers a sign-in page to anyone without a session.
  */
 
-import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
-import { createDataProxyHandler, createRuntimeConfigHandler, sessionAuth } from "@starkeep/app-client";
 import { createSessionRoutes, mintIdToken, signInAddress } from "@starkeep/app-client/auth";
-import { appBasePath, honoOriginGate } from "@starkeep/app-client/hono";
+import { appBasePath, honoOriginGate, serveStatic } from "@starkeep/app-client/hono";
 import manifest from "../starkeep.manifest.json" with { type: "json" };
 import { signInPage } from "./sign-in.mjs";
 
@@ -36,36 +40,16 @@ export const DEFAULT_WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 
 /** What the manifest declares reachable without a session, read not copied. */
 const STATIC_HANDLER = manifest.infraRequirements.compute.handlers.find((h) => h.name === "static");
 export const PUBLIC_PATHS = STATIC_HANDLER?.publicPaths ?? [];
+/**
+ * The build files the manifest declares. Locally `serveStatic` answers both
+ * prefixes from `web/`; in the cloud only `/pkg/*` reaches this app.
+ */
+export const STATIC_PATHS = STATIC_HANDLER?.staticAssetPaths ?? [];
 
 const SIGN_IN_PATH = "/sign-in";
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".wasm": "application/wasm",
-  ".css": "text/css; charset=utf-8",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
-  ".svg": "image/svg+xml",
-  ".otf": "font/otf",
-  ".ttf": "font/ttf",
-  ".woff2": "font/woff2",
-  ".frag": "application/octet-stream",
-  ".bin": "application/octet-stream",
-  ".evt": "application/octet-stream",
-  ".gz": "application/gzip",
-  ".map": "application/json; charset=utf-8",
-  ".txt": "text/plain; charset=utf-8",
-};
-
 export function isCloud() {
   return process.env.STARKEEP_APP_CLIENT_MODE === "cloud";
-}
-
-function acceptsGzip(acceptEncoding) {
-  return /(^|,)\s*(gzip|\*)\s*(;|,|$)/i.test(acceptEncoding ?? "");
 }
 
 /**
@@ -84,11 +68,13 @@ export function createApp({ webDir = DEFAULT_WEB_DIR } = {}) {
   // as the gate an app served outside the gateway would still have.
   app.use("*", honoOriginGate({ publicPaths: PUBLIC_PATHS, signInPath: SIGN_IN_PATH }));
 
-  // Required by the platform: tells a browser build whether it is paired with
-  // a cloud data server or the local one. Dice never asks, but the route is
-  // part of the contract, and the sign-in flow reads the pool ids from it.
-  const runtimeConfig = createRuntimeConfigHandler();
-  app.get("/starkeep-runtime-config", () => runtimeConfig());
+  // The build's files: `/_static/*` and `/pkg/*`, with the platform's content
+  // types and revalidation headers. Flutter does not hash its file names, so
+  // nothing is cached forever. A declared path with no file is a 404 here.
+  app.use(
+    "*",
+    serveStatic({ assetsDir: WEB_DIR, staticPaths: STATIC_PATHS, immutablePaths: [], staticMiss: "notFound" }),
+  );
 
   // The platform's session routes: `/api/session` (probe), `/refresh`,
   // `/sign-out`, `/token`. Public at the gateway so a browser whose hour-long
@@ -104,23 +90,13 @@ export function createApp({ webDir = DEFAULT_WEB_DIR } = {}) {
   app.all("/api/session", session);
   app.all("/api/session/*", session);
 
-  // Required by the platform: the signing proxy, the browser's only route to
-  // the data plane. Dice declares no grants and never calls it, so the most it
-  // can reach is nothing; `sessionAuth()` keeps it closed to anonymous callers
-  // on the cloud surface all the same.
-  const proxy = createDataProxyHandler({ appId: APP_ID, endUserAuth: sessionAuth() });
-  app.all("/api/local-data/*", (c) => {
-    const path = c.req.path.slice("/api/local-data/".length).split("/").filter(Boolean);
-    return proxy(c.req.raw, { params: Promise.resolve({ path }) });
-  });
-
   /** The app root as a browser sees it, with the trailing slash sign-in returns to. */
   const home = () => `${appBasePath()}/`;
 
   /** `index.html` with the mount prefix written into Flutter's `<base href>`. */
   async function shell(setCookies = []) {
     const html = await readFile(resolve(WEB_DIR, "index.html"), "utf8");
-    const headers = new Headers({ "Content-Type": MIME[".html"], "Cache-Control": "no-cache" });
+    const headers = new Headers({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
     for (const cookie of setCookies) headers.append("Set-Cookie", cookie);
     return new Response(html.replace(/<base href="[^"]*">/, `<base href="${home()}">`), { headers });
   }
@@ -163,36 +139,9 @@ export function createApp({ webDir = DEFAULT_WEB_DIR } = {}) {
     return signInPage(signInAddress(APP_ID, home()));
   });
 
-  // Everything else under GET is a file from the bundle, or a 404. No SPA
-  // fallback: Dice routes with the URL fragment (`#/...`), so every real
-  // navigation lands on `/`.
-  //
-  // A file may ship with a pre-compressed `.gz` sibling (the cloud bundle
-  // writes one for each large binary, because a Lambda answer is capped at
-  // 6 MB and CanvasKit is bigger than that uncompressed). When the browser
-  // accepts gzip, the sibling is sent as is with `Content-Encoding`.
-  app.get("*", async (c) => {
-    const rel = decodeURIComponent(c.req.path).replace(/^\/+/, "");
-    const file = resolve(WEB_DIR, rel);
-    if (file !== WEB_DIR && !file.startsWith(WEB_DIR + sep)) {
-      return c.json({ error: "Not found" }, 404);
-    }
-    const type = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
-    // Flutter's output is not content-hashed, so nothing is cached forever.
-    const headers = { "Content-Type": type, "Cache-Control": "no-cache" };
-
-    if (acceptsGzip(c.req.header("accept-encoding"))) {
-      const gz = await stat(`${file}.gz`).catch(() => null);
-      if (gz?.isFile()) {
-        return new Response(await readFile(`${file}.gz`), {
-          headers: { ...headers, "Content-Encoding": "gzip", Vary: "Accept-Encoding" },
-        });
-      }
-    }
-    const info = await stat(file).catch(() => null);
-    if (!info?.isFile()) return c.json({ error: `Dice has no file at ${c.req.path}` }, 404);
-    return new Response(await readFile(file), { headers });
-  });
+  // Dice routes with the URL fragment (`#/...`), so every real navigation
+  // lands on `/`, and any other path is a 404 rather than the shell.
+  app.notFound((c) => c.json({ error: `Dice has no file at ${c.req.path}` }, 404));
 
   return app;
 }

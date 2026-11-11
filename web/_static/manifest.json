@@ -1,7 +1,7 @@
 {
     "name": "dice.a.day",
     "short_name": "dice.a.day",
-    "start_url": ".",
+    "start_url": "../",
     "display": "standalone",
     "background_color": "#49FFDC",
     "theme_color": "#49FFDC",

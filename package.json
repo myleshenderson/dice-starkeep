@@ -16,11 +16,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.17",
-    "@starkeep/app-client": "0.10.0",
+    "@starkeep/app-client": "0.11.0",
     "hono": "^4.12.30"
   },
   "devDependencies": {
-    "@starkeep/admin-manifest": "^0.8.0",
+    "@starkeep/admin-manifest": "^0.9.0",
     "esbuild": "^0.28.0"
   },
   "pnpm": {

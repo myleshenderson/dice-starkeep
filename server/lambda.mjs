@@ -4,9 +4,10 @@
  *
  * The platform's web adapter strips the `/apps/dice` mount, converts API
  * Gateway events to and from web `Request`/`Response`, and hands every request
- * to the same Hono app the local surface runs. Nothing is served from disk
- * ahead of the app (`staticPaths` is empty, as the manifest's
- * `staticAssetPaths` says), so every path passes the manifest's gate first.
+ * to the same Hono app the local surface runs. CloudFront answers
+ * `/_static/*` from S3 before a request reaches this Lambda. The Hono app
+ * serves `/pkg/*` itself through `serveStatic`, after the manifest's gate, so
+ * the adapter needs no static paths of its own.
  *
  * `requestUpstream` is a started import, not a thunk: the module graph loads
  * during Lambda's INIT phase, as `createWebAppHandler` requires.
