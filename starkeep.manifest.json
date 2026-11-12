@@ -21,8 +21,9 @@
           "timeoutSeconds": 10,
           "routes": ["GET /", "ANY /{proxy+}"],
           "auth": "session",
-          "publicPaths": ["/", "/sign-in", "/starkeep-runtime-config", "/api/session/*"],
-          "staticAssetPaths": [],
+          "publicPaths": ["/", "/_static/*", "/pkg/*", "/sign-in", "/api/session/*"],
+          "staticAssetPaths": ["/_static/*", "/pkg/*"],
+          "bundleAssetsDir": "web",
           "env": {
             "STARKEEP_API_GATEWAY_URL": "",
             "STARKEEP_USER_POOL_ID": "",

@@ -9,9 +9,11 @@
  *            STARKEEP_BUNDLE_OUT    = <abs path>   (where to write dist.zip)
  *   out:     dist.zip at STARKEEP_BUNDLE_OUT
  *
- * Three steps: stage the Flutter build at `web/`, pre-compress the files a
- * Lambda could not otherwise answer, and bundle `server/lambda.mjs` with
- * esbuild to `index.mjs` at the zip's root (the manifest's `index.handler`).
+ * Two steps: stage the Flutter build at `web/`, and bundle `server/lambda.mjs`
+ * with esbuild to `index.mjs` at the zip's root (the manifest's
+ * `index.handler`). The manifest's `bundleAssetsDir` names `web/`, so the
+ * installer copies `web/_static/` from the zip to S3, where CloudFront serves
+ * it with no Lambda and no size limit.
  *
  * Nothing is rebuilt here. The Flutter output in `web/` is already built; the
  * base path is not baked in because `server/app.mjs` writes it into the shell's
@@ -19,11 +21,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
 import { build as esbuild } from "esbuild";
 
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,27 +40,8 @@ if (!BUNDLE_OUT) {
   process.exit(1);
 }
 
-/**
- * A Lambda's answer is capped at 6 MB, and the platform's adapter sends a
- * binary body as base64, which grows it by a third. A binary over this size
- * therefore cannot leave the Lambda as is, so the bundle writes a gzip sibling
- * for the server to send instead. Text (JavaScript, JSON, HTML) is sent as
- * text, with no base64 growth, and is left alone: the adapter would read a
- * compressed text file back as UTF-8 and corrupt it.
- */
-const GZIP_OVER_BYTES = 2 * 1024 * 1024;
-const TEXT_EXT = new Set([".html", ".js", ".mjs", ".css", ".json", ".map", ".txt", ".svg", ".xml"]);
-
 /** The Lambda entry must stay small; anything bigger has swallowed something. */
 const MAX_ENTRY_BYTES = 8 * 1024 * 1024;
-
-function* walk(dir) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (entry.isFile()) yield full;
-  }
-}
 
 async function buildDiceBundle(distZip) {
   const staging = mkdtempSync(join(tmpdir(), "starkeep-dice-bundle-"));
@@ -70,23 +52,7 @@ async function buildDiceBundle(distZip) {
     const web = join(staging, "web");
     cpSync(join(PKG_DIR, "web"), web, { recursive: true });
 
-    // 2. Gzip siblings for the large binaries (CanvasKit's wasm, in practice).
-    let compressed = 0;
-    for (const file of walk(web)) {
-      const ext = extname(file).toLowerCase();
-      if (ext === ".gz" || TEXT_EXT.has(ext)) continue;
-      const size = statSync(file).size;
-      if (size <= GZIP_OVER_BYTES) continue;
-      const gz = gzipSync(readFileSync(file), { level: 9 });
-      writeFileSync(`${file}.gz`, gz);
-      compressed += 1;
-      console.log(
-        `  ${file.slice(web.length + 1)}: ${(size / 1048576).toFixed(1)} MB -> ${(gz.length / 1048576).toFixed(1)} MB gzipped`,
-      );
-    }
-    if (compressed === 0) console.log("  nothing over the size threshold");
-
-    // 3. The Lambda entry, bundled. The Lambda has no install step of its own,
+    // 2. The Lambda entry, bundled. The Lambda has no install step of its own,
     //    so Hono and `@starkeep/app-client` are inlined; `node:*` is the
     //    runtime's. ESM with top-level await, which `createWebAppHandler`
     //    relies on to load the app during INIT.
@@ -115,7 +81,7 @@ async function buildDiceBundle(distZip) {
     }
     console.log(`  index.mjs: ${(entryBytes / 1024).toFixed(0)} KB`);
 
-    // 4. Zip. `web/` keeps its shape inside the zip because the server
+    // 3. Zip. `web/` keeps its shape inside the zip because the server
     //    resolves paths under it.
     console.log("\nCreating dist.zip…");
     mkdirSync(dirname(distZip), { recursive: true });

@@ -52,7 +52,7 @@ A"), Node 22 or later and pnpm.
    access), then **Start Dice**, then **Open Dice ↗**.
 
 `pnpm check` validates `starkeep.manifest.json` with the published
-`@starkeep/admin-manifest`. `pnpm test` exercises the server half.
+`@starkeep/admin-manifest`. `pnpm test` exercises the server half and checks that the build's hand-edited paths name files the manifest serves.
 
 ## Install in your Starkeep cloud
 
@@ -64,21 +64,27 @@ the zip and creates Dice's Lambda and routes; **Open Dice ↗** then opens
 with your Starkeep account.
 
 Dice holds no data in Starkeep, so the cloud install creates nothing but the
-compute to serve the game. A person without a session gets the sign-in page
-and nothing else: every other path is gated by the platform's session
-authorizer, and the server half refuses them too.
+compute for the shell and the copy of the build that CloudFront serves. The
+installer copies `web/_static/` to the deployment's app assets bucket, and
+CloudFront serves those files from S3 with no Lambda and no size limit. The
+build's files (`/_static/*` and `/pkg/*`) are public, like every Starkeep app's
+static files. A person without a session gets the sign-in page instead of the
+game, and the platform's session authorizer gates every other path.
+
+The cloud install needs a deployment on the `starkeep-core` release that added
+the app assets bucket (`@starkeep/admin-manifest` 0.9.0).
 
 ## How it is put together
 
 | Path | What it is |
 | --- | --- |
-| `starkeep.manifest.json` | App identity, `tier: community`, no grants, `localRun` starting `node server/serve.mjs --port <n>`, and one session-gated `static` compute handler for the cloud with `/`, `/sign-in`, the runtime config and the session routes public. |
-| `server/app.mjs` | The Hono app: `/starkeep-runtime-config` (runtime-config route), `/api/session/*` (the platform's session routes), `/api/local-data/*` (signing proxy, `sessionAuth()`), the root and `/sign-in` (the game, or the sign-in page for a cloud visitor without a session), and a file server for `web/`. `index.html` gets its `<base href>` from `appBasePath()`. |
+| `starkeep.manifest.json` | App identity, `tier: community`, no grants, `localRun` starting `node server/serve.mjs --port <n>`, and one session-gated `static` compute handler for the cloud. `/`, `/sign-in`, the session routes and the build's files are public; `bundleAssetsDir` names `web/` in the zip. |
+| `server/app.mjs` | The Hono app: `serveStatic` for `/_static/*` and `/pkg/*`, `/api/session/*` (the platform's session routes), and the root and `/sign-in` (the game, or the sign-in page for a cloud visitor without a session). `index.html` gets its `<base href>` from `appBasePath()`. Dice keeps no data in Starkeep, so it carries no runtime-config route or signing proxy. |
 | `server/sign-in.mjs` | The one-button sign-in page, linking to the platform's `/auth/start`. |
 | `server/serve.mjs` | The local surface: `@hono/node-server` on 127.0.0.1, refusing non-loopback `Host` headers. |
 | `server/lambda.mjs` | The cloud surface: the platform's web adapter in front of the same Hono app. |
-| `scripts/bundle.mjs` | `pnpm bundle`: stages `web/`, gzips the large binaries (a Lambda answer is capped at 6 MB and CanvasKit is bigger), bundles the Lambda entry with esbuild and zips. |
-| `web/` | The pre-built Flutter web bundle (static files, not rebuilt here). |
+| `scripts/bundle.mjs` | `pnpm bundle`: stages `web/`, bundles the Lambda entry with esbuild and zips. |
+| `web/` | The pre-built Flutter web bundle (static files, not rebuilt here): `index.html` at the root, the Rust engine in `pkg/`, and everything else in `_static/`. |
 
 The bundle is not built with Vite. Starkeep's docs name Vite as the default for
 the browser half, but the local surface only needs files on disk, so the Flutter
@@ -97,7 +103,20 @@ scripts/gen-ev-table.sh
 ```
 
 `--no-web-resources-cdn` makes the page load CanvasKit from this app instead of
-from Google's CDN, so Dice works without internet access. The CanvasKit
+from Google's CDN, so Dice works without internet access.
+
+Starkeep serves files under `/_static/` from S3 in the cloud, so the build was
+then rearranged to match:
+
+- Everything except `index.html` and `pkg/` moved into `_static/`. `pkg/`
+  stays at the root because `main.dart.js` loads the Rust engine from
+  `pkg/rust_lib_mobile` relative to the page.
+- `index.html` points its icon, manifest and `flutter_bootstrap.js` links at
+  `_static/`.
+- `flutter_bootstrap.js` passes `entrypointBaseUrl: "_static/"`,
+  `assetBase: "_static/"` and `canvasKitBaseUrl: "_static/canvaskit/"` to
+  `_flutter.loader.load()`.
+- `_static/manifest.json` sets `start_url` to `../`, the app root. The CanvasKit
 variants the dart2js/CanvasKit build never fetches were then deleted
 (`skwasm*`, `wimp*`, `webparagraph/`, every `*.js.symbols`), as were the
 hosted site's `privacy.html` and `terms.html`, which describe a service this

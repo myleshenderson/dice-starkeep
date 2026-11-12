@@ -1,8 +1,9 @@
 /**
  * The server half, exercised in-process through `app.fetch`.
  *
- * A temporary `web/` stands in for the Flutter build so the tests say nothing
- * about its contents, and the cloud cases run with no user pool configured, so
+ * A temporary `web/`, laid out like the real one (`index.html`, `_static/`,
+ * `pkg/`), stands in for the Flutter build so the tests say nothing about its
+ * contents, and the cloud cases run with no user pool configured, so
  * every visitor is a stranger: the page with the button, never a token.
  */
 
@@ -11,7 +12,6 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
 
 let webDir;
 let createApp;
@@ -20,11 +20,11 @@ const PAYLOAD = Buffer.from("not really wasm, but big enough to tell apart");
 before(async () => {
   webDir = mkdtempSync(join(tmpdir(), "dice-test-web-"));
   writeFileSync(join(webDir, "index.html"), '<!DOCTYPE html><html><head><base href="/"></head><body>dice</body></html>');
-  writeFileSync(join(webDir, "main.dart.js"), "console.log('dice')");
-  mkdirSync(join(webDir, "canvaskit"));
-  writeFileSync(join(webDir, "canvaskit", "canvaskit.wasm"), PAYLOAD);
-  writeFileSync(join(webDir, "canvaskit", "canvaskit.wasm.gz"), gzipSync(PAYLOAD));
-  writeFileSync(join(webDir, "canvaskit", "only-gz.wasm.gz"), gzipSync(PAYLOAD));
+  mkdirSync(join(webDir, "_static"));
+  writeFileSync(join(webDir, "_static", "main.dart.js"), "console.log('dice')");
+  mkdirSync(join(webDir, "pkg"));
+  writeFileSync(join(webDir, "pkg", "rust_lib_mobile_bg.wasm"), PAYLOAD);
+  writeFileSync(join(webDir, "stray.js"), "not declared");
   ({ createApp } = await import("../server/app.mjs"));
 });
 
@@ -63,45 +63,34 @@ test("local sign-in sends the visitor home", async () => {
   assert.equal(res.headers.get("location"), "/");
 });
 
-test("a bundle file is served with its type", async () => {
-  const res = await get(local(), "/main.dart.js");
+// The platform's own tests cover what `serveStatic` sends (types, cache
+// headers, ETags, the traversal guard). These check only that Dice hands it
+// both prefixes.
+test("a _static file is served", async () => {
+  const res = await get(local(), "/_static/main.dart.js");
   assert.equal(res.status, 200);
-  assert.match(res.headers.get("content-type"), /javascript/);
   assert.equal(await res.text(), "console.log('dice')");
 });
 
-test("a gzip sibling is sent when the browser accepts gzip", async () => {
-  const res = await get(local(), "/canvaskit/canvaskit.wasm", { "accept-encoding": "gzip, deflate, br" });
+test("the Rust engine is served from pkg/ at the root", async () => {
+  const res = await get(local(), "/pkg/rust_lib_mobile_bg.wasm");
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get("content-encoding"), "gzip");
-  assert.equal(res.headers.get("content-type"), "application/wasm");
-  assert.equal(res.headers.get("vary"), "Accept-Encoding");
-  assert.deepEqual(gunzipSync(Buffer.from(await res.arrayBuffer())), PAYLOAD);
-});
-
-test("the plain file is sent when the browser does not accept gzip", async () => {
-  const res = await get(local(), "/canvaskit/canvaskit.wasm", { "accept-encoding": "identity" });
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get("content-encoding"), null);
   assert.deepEqual(Buffer.from(await res.arrayBuffer()), PAYLOAD);
 });
 
-test("a file that exists only gzipped is still served to a gzip client", async () => {
-  const res = await get(local(), "/canvaskit/only-gz.wasm", { "accept-encoding": "gzip" });
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get("content-encoding"), "gzip");
+test("a declared path with no file is a 404, not the shell", async () => {
+  const res = await get(local(), "/_static/nope.js");
+  assert.equal(res.status, 404);
 });
 
-test("a path outside the bundle is refused", async () => {
-  const res = await get(local(), "/../package.json");
+test("a file outside the declared paths is not served", async () => {
+  const res = await get(local(), "/stray.js");
   assert.equal(res.status, 404);
-  const res2 = await get(local(), "/%2e%2e/package.json");
-  assert.equal(res2.status, 404);
 });
 
-test("an unknown file is a 404, not the shell", async () => {
-  const res = await get(local(), "/nope.js");
-  assert.equal(res.status, 404);
+test("the data routes are gone", async () => {
+  assert.equal((await get(local(), "/starkeep-runtime-config")).status, 404);
+  assert.equal((await get(local(), "/api/local-data/data/records")).status, 404);
 });
 
 test("cloud root without a session is the sign-in page", async () => {
@@ -120,16 +109,17 @@ test("cloud sign-in page without a session has the button", async () => {
   assert.match(await res.text(), /\/auth\/start\?app=dice/);
 });
 
-test("cloud bundle file without a session is sent to sign-in by the origin gate", async () => {
-  const res = await get(cloud(), "/main.dart.js");
-  assert.equal(res.status, 302);
-  assert.equal(new URL(res.headers.get("location"), "http://dice.test").pathname, "/apps/dice/sign-in");
+test("cloud build files are public, as the manifest declares", async () => {
+  const res = await get(cloud(), "/_static/main.dart.js");
+  assert.equal(res.status, 200);
+  const pkg = await get(cloud(), "/pkg/rust_lib_mobile_bg.wasm");
+  assert.equal(pkg.status, 200);
 });
 
-test("cloud runtime config is public", async () => {
-  const res = await get(cloud(), "/starkeep-runtime-config");
-  assert.equal(res.status, 200);
-  assert.match(res.headers.get("content-type"), /json/);
+test("cloud undeclared path without a session is sent to sign-in by the origin gate", async () => {
+  const res = await get(cloud(), "/stray.js");
+  assert.equal(res.status, 302);
+  assert.equal(new URL(res.headers.get("location"), "http://dice.test").pathname, "/apps/dice/sign-in");
 });
 
 test("cloud session probe is public and answers signed out", async () => {

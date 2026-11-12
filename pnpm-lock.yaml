@@ -12,15 +12,15 @@ importers:
         specifier: ^1.19.17
         version: 1.19.18(hono@4.13.16)
       '@starkeep/app-client':
-        specifier: 0.10.0
-        version: 0.10.0(@hono/node-server@1.19.18(hono@4.13.16))(hono@4.13.16)
+        specifier: 0.11.0
+        version: 0.11.0(@hono/node-server@1.19.18(hono@4.13.16))(hono@4.13.16)
       hono:
         specifier: ^4.12.30
         version: 4.13.16
     devDependencies:
       '@starkeep/admin-manifest':
-        specifier: ^0.8.0
-        version: 0.8.0
+        specifier: ^0.9.0
+        version: 0.9.0
       esbuild:
         specifier: ^0.28.0
         version: 0.28.2
@@ -281,11 +281,11 @@ packages:
     resolution: {integrity: sha512-lCA6QG22dPk9ecHbv91jDQZsmtPUjdS1aE2Il6NNPqe7DrYc0dZQi6DhcESk2KYXH2sp5xbAcGdYMZDFnuzA2A==}
     engines: {node: '>=18.0.0'}
 
-  '@starkeep/admin-manifest@0.8.0':
-    resolution: {integrity: sha512-OfsvYmmlYYQbMbdGgja/T8yLE5oPC/wF8yyBp0bFc3VefCduzF2OwF3f9Ipe2g1gPluG3a8MiyBG02mSC/IxcQ==}
+  '@starkeep/admin-manifest@0.9.0':
+    resolution: {integrity: sha512-7uo7WMg0/016PWJUQsHKlbfiFYdtFRLFqQBzCK7n6pZbHkCvDsy5iuomymBMi934jZ7M3I3TcY1OWcDe1K1SJg==}
 
-  '@starkeep/app-client@0.10.0':
-    resolution: {integrity: sha512-wK6FU/FHjZC+s2KgNDGLVf8Jqo0lYr4YI8Ejhf1DOMX6BImgOYutlzT9lAC2a6o2bdgxkkdHXGfGVXYi+8rsdg==}
+  '@starkeep/app-client@0.11.0':
+    resolution: {integrity: sha512-C3SBm02R90q98IrljZu+9IGR2XHTXB5dWO1WPuBnMsK7FGOrnm0F7+lVpUTiW5B3rOeE5xaYW8raGi/iZvvSnA==}
     peerDependencies:
       '@hono/node-server': ^1.19.0
       hono: ^4.12.0
@@ -295,8 +295,8 @@ packages:
       hono:
         optional: true
 
-  '@starkeep/protocol-primitives@0.8.0':
-    resolution: {integrity: sha512-RZXSqYEjkYV+W1Q2SRjKdbpn1IxeZVof3ToDRsHakZE77COlj+jQwQ8PgmTgrgDlcnHQg6fYByajxHfSJ2U1WQ==}
+  '@starkeep/protocol-primitives@0.10.0':
+    resolution: {integrity: sha512-e+s0YfACJeW3z1D6PSYQjG0nRjI+Dlx7HhlG+D7xa3BYQsXHMEjSeSVhQXQ3DIpSTZcXRgpmgv9fY8f9n7Pu9w==}
 
   bowser@2.15.0:
     resolution: {integrity: sha512-xic6KSZglg/I4ymp45fdM4GWfYpBK79Fxd/TOvJktlaPgQqqDxvmGwOPZl2V0dyeS3Lj5c180bLhXF43iyAjZQ==}
@@ -599,14 +599,14 @@ snapshots:
     dependencies:
       tslib: 2.9.1
 
-  '@starkeep/admin-manifest@0.8.0':
+  '@starkeep/admin-manifest@0.9.0':
     dependencies:
-      '@starkeep/protocol-primitives': 0.8.0
+      '@starkeep/protocol-primitives': 0.10.0
       zod: 3.25.76
     transitivePeerDependencies:
       - typescript
 
-  '@starkeep/app-client@0.10.0(@hono/node-server@1.19.18(hono@4.13.16))(hono@4.13.16)':
+  '@starkeep/app-client@0.11.0(@hono/node-server@1.19.18(hono@4.13.16))(hono@4.13.16)':
     dependencies:
       '@aws-sdk/client-ssm': 3.1164.0
       dotenv: 17.4.2
@@ -614,7 +614,7 @@ snapshots:
       '@hono/node-server': 1.19.18(hono@4.13.16)
       hono: 4.13.16
 
-  '@starkeep/protocol-primitives@0.8.0':
+  '@starkeep/protocol-primitives@0.10.0':
     dependencies:
       '@noble/hashes': 1.8.0
       ulidx: 2.4.1
